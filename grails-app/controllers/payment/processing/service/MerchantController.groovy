@@ -11,7 +11,7 @@ class MerchantController {
 
     MerchantService merchantService
 
-    def create() {
+    def create() { //singeltion
         try {
             def body = request.JSON
 

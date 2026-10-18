@@ -10,11 +10,7 @@ class PaymentService {
             String currency,
             String description
     ) {
-        Merchant merchant = Merchant.findByApiKeyAndActive(apiKey, true)
-
-        if (!merchant) {
-            throw new IllegalArgumentException('Invalid API key')
-        }
+        Merchant merchant = requireMerchant(apiKey)
 
         PaymentTransaction payment = new PaymentTransaction(
                 reference: reference,
@@ -29,23 +25,12 @@ class PaymentService {
         return payment
     }
     PaymentTransaction capturePayment(String apiKey, String reference) {
-        Merchant merchant = Merchant.findByApiKeyAndActive(apiKey, true)
+        Merchant merchant = requireMerchant(apiKey)
 
-        if (!merchant) {
-            throw new IllegalArgumentException('Invalid API key')
-        }
-
-        PaymentTransaction payment =
-                PaymentTransaction.findByReferenceAndMerchant(reference, merchant)
-
-        if (!payment) {
-            throw new IllegalArgumentException('Payment not found')
-        }
+        PaymentTransaction payment = requirePayment(reference, merchant)
 
         if (payment.status != PaymentStatus.PENDING) {
-            throw new IllegalStateException(
-                    'Only PENDING payments can be captured'
-            )
+            throw new ApiException(ApiError.CAPTURE_NOT_ALLOWED)
         }
 
         payment.status = PaymentStatus.SUCCESS
@@ -54,23 +39,12 @@ class PaymentService {
         return payment
     }
     PaymentTransaction refundPayment(String apiKey, String reference) {
-        Merchant merchant = Merchant.findByApiKeyAndActive(apiKey, true)
+        Merchant merchant = requireMerchant(apiKey)
 
-        if (!merchant) {
-            throw new IllegalArgumentException('Invalid API key')
-        }
-
-        PaymentTransaction payment =
-                PaymentTransaction.findByReferenceAndMerchant(reference, merchant)
-
-        if (!payment) {
-            throw new IllegalArgumentException('Payment not found')
-        }
+        PaymentTransaction payment = requirePayment(reference, merchant)
 
         if (payment.status != PaymentStatus.SUCCESS) {
-            throw new IllegalStateException(
-                    'Only SUCCESS payments can be refunded'
-            )
+            throw new ApiException(ApiError.REFUND_NOT_ALLOWED)
         }
 
         payment.status = PaymentStatus.REFUNDED
@@ -79,18 +53,10 @@ class PaymentService {
         return payment
     }
     PaymentTransaction getPayment(String apiKey, String reference) {
-        Merchant merchant = Merchant.findByApiKeyAndActive(apiKey, true)
 
-        if (!merchant) {
-            throw new IllegalArgumentException('Invalid API key')
-        }
+        Merchant merchant = requireMerchant(apiKey)
 
-        PaymentTransaction payment =
-                PaymentTransaction.findByReferenceAndMerchant(reference, merchant)
-
-        if (!payment) {
-            throw new IllegalArgumentException('Payment not found')
-        }
+        PaymentTransaction payment = requirePayment(reference, merchant)
 
         return payment
     }
@@ -102,11 +68,7 @@ class PaymentService {
             Integer max,
             Integer offset
     ) {
-        Merchant merchant = Merchant.findByApiKeyAndActive(apiKey, true)
-
-        if (!merchant) {
-            throw new IllegalArgumentException('Invalid API key')
-        }
+        Merchant merchant = requireMerchant(apiKey)
 
         return PaymentTransaction.createCriteria().list(
                 max: max,
@@ -128,5 +90,31 @@ class PaymentService {
 
             order('dateCreated', 'desc')
         } as List<PaymentTransaction>
+    }
+    private Merchant requireMerchant(String apiKey) {
+
+        Merchant merchant = Merchant.findByApiKeyAndActive(apiKey, true)
+
+        if (!merchant) {
+            throw new ApiException(ApiError.INVALID_API_KEY)
+        }
+
+        return merchant
+    }
+    private PaymentTransaction requirePayment(
+            String reference,
+            Merchant merchant
+    ) {
+        PaymentTransaction payment =
+                PaymentTransaction.findByReferenceAndMerchant(
+                        reference,
+                        merchant
+                )
+
+        if (!payment) {
+            throw new ApiException(ApiError.PAYMENT_NOT_FOUND)
+        }
+
+        return payment
     }
 }

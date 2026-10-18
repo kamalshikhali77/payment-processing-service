@@ -7,7 +7,7 @@ class PaymentTransaction {
     String description
     PaymentStatus status = PaymentStatus.PENDING
 
-    Merchant merchant
+    Merchant merchant // belongs *
 
     Date dateCreated
     Date lastUpdated

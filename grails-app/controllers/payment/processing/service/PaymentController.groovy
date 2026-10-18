@@ -3,309 +3,162 @@ package payment.processing.service
 import grails.converters.JSON
 import org.springframework.http.HttpStatus
 import java.text.SimpleDateFormat
-import grails.validation.ValidationException
+
 class PaymentController {
     static responseFormats = ['json']
 
     PaymentService paymentService
 
-    def create() {
-        try {
-            String apiKey = request.getHeader('X-API-KEY')
-            def body = request.JSON
+    def create(CreatePaymentCommand cmd) {
+        String apiKey = request.getHeader('X-API-KEY')
 
-            PaymentTransaction payment =
-                    paymentService.createPayment(
-                            apiKey,
-                            body.reference as String,
-                            body.amount as BigDecimal,
-                            body.currency as String,
-                            body.description as String
-                    )
 
-            render(
-                    status: HttpStatus.CREATED.value(),
-                    contentType: 'application/json',
-                    text: [
-                            id         : payment.id,
-                            reference  : payment.reference,
-                            amount     : payment.amount,
-                            currency   : payment.currency,
-                            description: payment.description,
-                            status     : payment.status.name(),
-                            merchantId : payment.merchant.id,
-                            dateCreated: payment.dateCreated
-                    ] as JSON
-            )
-        } catch (ValidationException exception) {
-            String errorMessage =
-                    getPaymentValidationMessage(exception)
-
-            render(
-                    status: HttpStatus.BAD_REQUEST.value(),
-                    contentType: 'application/json',
-                    text: [
-                            errorCode: '40',
-                            error    : errorMessage
-                    ] as JSON
-            )
-        } catch (IllegalArgumentException exception) {
-            boolean invalidApiKey =
-                    exception.message == 'Invalid API key'
-
-            render(
-                    status: invalidApiKey
-                            ? HttpStatus.UNAUTHORIZED.value()
-                            : HttpStatus.BAD_REQUEST.value(),
-                    contentType: 'application/json',
-                    text: [
-                            errorCode: invalidApiKey ? '01' : '40',
-                            error    : invalidApiKey
-                                    ? exception.message
-                                    : 'Invalid payment data'
-                    ] as JSON
+        if (!cmd.validate()) {
+            throw new ApiException(
+                    ApiError.INVALID_PAYMENT_DATA,
+                    cmd.getValidationMessage()
             )
         }
-    }
-    def capture() {
-        try {
-            String apiKey = request.getHeader('X-API-KEY')
-            String reference = params.reference
 
-            PaymentTransaction payment =
-                    paymentService.capturePayment(apiKey, reference)
 
-            render(
-                    status: HttpStatus.OK.value(),
-                    contentType: 'application/json',
-                    text: [
-                            id       : payment.id,
-                            reference: payment.reference,
-                            status   : payment.status.name()
-                    ] as JSON
-            )
-        } catch (IllegalStateException exception) {
-            render(
-                    status: HttpStatus.CONFLICT.value(),
-                    contentType: 'application/json',
-                    text: [
-                            errorCode: '11',
-                            error    : exception.message
-                    ] as JSON
-            )
-        } catch (IllegalArgumentException exception) {
-            boolean invalidApiKey =
-                    exception.message == 'Invalid API key'
+        CreatePaymentAction action = new CreatePaymentAction(paymentService)
 
-            render(
-                    status: invalidApiKey
-                            ? HttpStatus.UNAUTHORIZED.value()
-                            : HttpStatus.NOT_FOUND.value(),
-                    contentType: 'application/json',
-                    text: [
-                            errorCode: invalidApiKey ? '01' : '20',
-                            error    : exception.message
-                    ] as JSON
-            )
-        }
-    }
-    def refund() {
-        try {
-            String apiKey = request.getHeader('X-API-KEY')
-            String reference = params.reference
+        PaymentTransaction payment = action.execute(apiKey, cmd)
 
-            PaymentTransaction payment =
-                    paymentService.refundPayment(apiKey, reference)
 
-            render(
-                    status: HttpStatus.OK.value(),
-                    contentType: 'application/json',
-                    text: [
-                            id       : payment.id,
-                            reference: payment.reference,
-                            status   : payment.status.name()
-                    ] as JSON
-            )
-        } catch (IllegalStateException exception) {
-            render(
-                    status: HttpStatus.CONFLICT.value(),
-                    contentType: 'application/json',
-                    text: [
-                            errorCode: '10',
-                            error    : exception.message
-                    ] as JSON
-            )
-        }
-     catch (IllegalArgumentException exception) {
-        boolean invalidApiKey =
-                exception.message == 'Invalid API key'
+
+        PaymentDTO dto = PaymentDTO.fromPayment(payment)
 
         render(
-                status: invalidApiKey
-                        ? HttpStatus.UNAUTHORIZED.value()
-                        : HttpStatus.NOT_FOUND.value(),
+                status: HttpStatus.CREATED.value(),
                 contentType: 'application/json',
-                text: [
-                        errorCode: invalidApiKey ? '01' : '20',
-                        error    : exception.message
-                ] as JSON
+                text: dto.toCreateResponse() as JSON
         )
     }
+    def capture() {
+        String apiKey = request.getHeader('X-API-KEY')
+        String reference = params.reference
+
+        PaymentTransaction payment =
+                paymentService.capturePayment(apiKey, reference)
+
+        PaymentDTO dto = PaymentDTO.fromPayment(payment)
+
+        render(
+                status: HttpStatus.OK.value(),
+                contentType: 'application/json',
+                text: dto.toStatusResponse() as JSON
+        )
     }
+
+    def refund() {
+        String apiKey = request.getHeader('X-API-KEY')
+        String reference = params.reference
+
+        PaymentTransaction payment =
+                paymentService.refundPayment(apiKey, reference)
+
+        PaymentDTO dto = PaymentDTO.fromPayment(payment)
+
+        render(
+                status: HttpStatus.OK.value(),
+                contentType: 'application/json',
+                text: dto.toStatusResponse() as JSON
+        )
+    }
+
     def details() {
-        try {
-            String apiKey = request.getHeader('X-API-KEY')
-            String reference = params.reference
+        String apiKey = request.getHeader('X-API-KEY')
+        String reference = params.reference
 
-            PaymentTransaction payment =
-                    paymentService.getPayment(apiKey, reference)
+        PaymentTransaction payment =
+                paymentService.getPayment(apiKey, reference)
 
-            render(
-                    status: HttpStatus.OK.value(),
-                    contentType: 'application/json',
-                    text: [
-                            id         : payment.id,
-                            reference  : payment.reference,
-                            amount     : payment.amount,
-                            currency   : payment.currency,
-                            description: payment.description,
-                            status     : payment.status.name(),
-                            merchantId : payment.merchant.id,
-                            dateCreated: payment.dateCreated,
-                            lastUpdated: payment.lastUpdated
-                    ] as JSON
-            )
-        } catch (IllegalArgumentException exception) {
-            boolean invalidApiKey =
-                    exception.message == 'Invalid API key'
+        PaymentDTO dto = PaymentDTO.fromPayment(payment)
 
-            render(
-                    status: invalidApiKey
-                            ? HttpStatus.UNAUTHORIZED.value()
-                            : HttpStatus.NOT_FOUND.value(),
-                    contentType: 'application/json',
-                    text: [
-                            errorCode: invalidApiKey ? '01' : '20',
-                            error    : exception.message
-                    ] as JSON
-            )
-        }
+        render(
+                status: HttpStatus.OK.value(),
+                contentType: 'application/json',
+                text: dto as JSON
+        )
     }
+
     def listAll() {
+        String apiKey = request.getHeader('X-API-KEY')
+
+        PaymentStatus status = null
+
+        if (params.status) {
+            try {
+                status = PaymentStatus.valueOf(
+                        params.status.toUpperCase()
+                )
+            } catch (IllegalArgumentException exception) {
+                throw new ApiException(ApiError.INVALID_PAYMENT_STATUS)
+            }
+        }
+
+        SimpleDateFormat dateFormat =
+                new SimpleDateFormat('yyyy-MM-dd')
+
+        dateFormat.setLenient(false)
+
+        Date fromDate = null
+        Date toDate = null
+
         try {
-            String apiKey = request.getHeader('X-API-KEY')
+            if (params.fromDate) {
+                String from = params.fromDate.toString()
 
-            PaymentStatus status = params.status
-                    ? PaymentStatus.valueOf(params.status.toUpperCase())
-                    : null
+                if (!(from ==~ /\d{4}-\d{2}-\d{2}/)) {
+                    throw new java.text.ParseException('Invalid date format', 0)
+                }
 
-            SimpleDateFormat dateFormat =
-                    new SimpleDateFormat('yyyy-MM-dd')
-
-            dateFormat.setLenient(false)
-
-            Date fromDate = params.fromDate
-                    ? dateFormat.parse(params.fromDate)
-                    : null
-
-            Date toDate = null
+                fromDate = dateFormat.parse(from)
+            }
 
             if (params.toDate) {
+                String to = params.toDate.toString()
+
+                if (!(to ==~ /\d{4}-\d{2}-\d{2}/)) {
+                    throw new java.text.ParseException('Invalid date format', 0)
+                }
+
                 Calendar calendar = Calendar.getInstance()
-                calendar.time = dateFormat.parse(params.toDate)
+                calendar.time = dateFormat.parse(to)
                 calendar.add(Calendar.DAY_OF_MONTH, 1)
                 toDate = calendar.time
             }
-
-            Integer max = params.int('max') ?: 10
-            Integer offset = params.int('offset') ?: 0
-
-            max = Math.max(1, Math.min(max, 100))
-            offset = Math.max(0, offset)
-
-            List<PaymentTransaction> payments =
-                    paymentService.listPayments(
-                            apiKey,
-                            status,
-                            fromDate,
-                            toDate,
-                            max,
-                            offset
-                    )
-
-            def response = payments.collect {
-                PaymentTransaction payment ->
-                    [
-                            id         : payment.id,
-                            reference  : payment.reference,
-                            amount     : payment.amount,
-                            currency   : payment.currency,
-                            description: payment.description,
-                            status     : payment.status.name(),
-                            merchantId : payment.merchant.id,
-                            dateCreated: payment.dateCreated,
-                            lastUpdated: payment.lastUpdated
-                    ]
-            }
-
-            render(
-                    status: HttpStatus.OK.value(),
-                    contentType: 'application/json',
-                    text: response as JSON
-            )
         } catch (java.text.ParseException exception) {
-            render(
-                    status: HttpStatus.BAD_REQUEST.value(),
-                    contentType: 'application/json',
-                    text: [
-                            errorCode: '31',
-                            error    : 'Date must use yyyy-MM-dd format'
-                    ] as JSON
-            )
-        } catch (IllegalArgumentException exception) {
-            boolean invalidApiKey =
-                    exception.message == 'Invalid API key'
-
-            render(
-                    status: invalidApiKey
-                            ? HttpStatus.UNAUTHORIZED.value()
-                            : HttpStatus.BAD_REQUEST.value(),
-                    contentType: 'application/json',
-                    text: [
-                            errorCode: invalidApiKey ? '01' : '30',
-                            error    : invalidApiKey
-                                    ? exception.message
-                                    : 'Invalid payment status'
-                    ] as JSON
-            )
-        }
-    }
-    private String getPaymentValidationMessage(
-            ValidationException exception
-    ) {
-        def fieldError = exception.errors?.fieldErrors?.first()
-
-        if (!fieldError) {
-            return 'Invalid payment data'
+            throw new ApiException(ApiError.INVALID_DATE_FORMAT)
         }
 
-        switch (fieldError.field) {
-            case 'amount':
-                return 'Amount must be greater than 0'
+        Integer max = params.int('max') ?: 10
+        Integer offset = params.int('offset') ?: 0
 
-            case 'reference':
-                return fieldError.code?.contains('unique')
-                        ? 'Reference must be unique'
-                        : 'Reference is required'
+        max = Math.max(1, Math.min(max, 100))
+        offset = Math.max(0, offset)
 
-            case 'currency':
-                return 'Currency is required'
+        List<PaymentTransaction> payments =
+                paymentService.listPayments(
+                        apiKey,
+                        status,
+                        fromDate,
+                        toDate,
+                        max,
+                        offset
+                )
 
-            case 'merchant':
-                return 'Merchant is required'
-
-            default:
-                return 'Invalid payment data'
+        def response = payments.collect { PaymentTransaction payment ->
+            PaymentDTO.fromPayment(payment)
         }
+
+
+        render(
+                status: HttpStatus.OK.value(),
+                contentType: 'application/json',
+                text: response as JSON
+        )
     }
 }
+

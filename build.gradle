@@ -92,3 +92,8 @@ tasks.withType(GroovyCompile) {
 tasks.withType(Test) {
     useJUnitPlatform()
 }
+
+springBoot {
+    mainClass = 'payment.processing.service.Application'
+}
+
